@@ -1,0 +1,13 @@
+venv/
+files/
+.vscode/
+.env
+.venv
+__pycache__/
+*.pyc
+.streamlit/secrets.toml
+nb/
+*.xlsx
+*.xls
+*.xlsm
+*.xlsb
