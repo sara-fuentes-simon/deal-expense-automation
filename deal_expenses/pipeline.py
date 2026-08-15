@@ -28,7 +28,7 @@ class DealExpensePipeline:
         validations: list[ValidationResult] = []
         summaries = []
         try:
-            yield ProgressEvent("Preflight", "Checking uploaded workbooks.", 10)
+            yield ProgressEvent("Preflight", f"Checking uploaded workbooks for {request.reporting_year} data.", 10)
             request.validate_paths_exist()
             master_checks = self._master_validator.validate(request.master_path)
             validations.extend(master_checks)
@@ -40,7 +40,11 @@ class DealExpensePipeline:
             for index, (key, adapter) in enumerate(self._adapters.items(), start=1):
                 if key not in request.source_paths:
                     raise ValueError(f"No upload was supplied for {adapter.display_name}.")
-                yield ProgressEvent("Source validation", f"Checking {adapter.display_name}.", 10 + index * 15)
+                yield ProgressEvent(
+                    "Source validation",
+                    f"Checking {adapter.display_name} for {request.reporting_year} data.",
+                    10 + index * 15,
+                )
                 source_checks = adapter.validate(request.source_paths[key])
                 validations.extend(source_checks)
                 if not all(check.passed for check in source_checks):
@@ -49,7 +53,11 @@ class DealExpensePipeline:
                     return
                 summaries.append(adapter.summarize(request.source_paths[key], request.reporting_year))
 
-            yield ProgressEvent("Excel refresh", "Refreshing the master workbook in Microsoft Excel.", 50)
+            yield ProgressEvent(
+                "Excel refresh",
+                f"Refreshing the master workbook with {request.reporting_year} data in Microsoft Excel.",
+                50,
+            )
             metrics = self._workbook_writer.write(request)
             total_expense = float(metrics["total_expense"])
             self.result = RunResult(
@@ -59,7 +67,7 @@ class DealExpensePipeline:
                 source_summaries=summaries,
                 total_expense=total_expense,
             )
-            yield ProgressEvent("Complete", "Workbook refreshed and validated.", 100)
+            yield ProgressEvent("Complete", f"{request.reporting_year} workbook refreshed and validated.", 100)
         except Exception as error:
             self.result = RunResult(
                 success=False,

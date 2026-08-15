@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import date
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -41,10 +42,11 @@ def render_results() -> None:
         st.error(result.error_message or "The workbook refresh did not complete.")
     else:
         st.success("The master workbook was refreshed and validated.")
-        columns = st.columns(3)
-        columns[0].metric("BSNY rows", f"{result.source_summaries[0].row_count:,}")
-        columns[1].metric("SanCap rows", f"{result.source_summaries[1].row_count:,}")
-        columns[2].metric("Expense total", f"${result.total_expense:,.2f}")
+        columns = st.columns(4)
+        columns[0].metric("Reporting year", st.session_state["run_reporting_year"])
+        columns[1].metric("BSNY rows", f"{result.source_summaries[0].row_count:,}")
+        columns[2].metric("SanCap rows", f"{result.source_summaries[1].row_count:,}")
+        columns[3].metric("Expense total", f"${result.total_expense:,.2f}")
         st.download_button(
             "Download refreshed workbook",
             data=st.session_state["output_bytes"],
@@ -72,6 +74,7 @@ def main() -> None:
     with right_column:
         sancap_upload = st.file_uploader("SanCap expense report", type=["xlsx"], key="sancap")
         output_filename = st.text_input("Output master filename", value="refreshed_deal_expenses.xlsx")
+        reporting_year = st.number_input("Reporting year", value=date.today().year, step=1, format="%d")
 
     run_requested = st.button("Refresh master workbook", type="primary", use_container_width=True)
     if run_requested:
@@ -86,6 +89,7 @@ def main() -> None:
 
         st.session_state.pop("run_result", None)
         st.session_state.pop("output_bytes", None)
+        st.session_state.pop("run_reporting_year", None)
         with TemporaryDirectory(prefix="deal_expenses_") as temporary_directory:
             directory = Path(temporary_directory)
             request = RunRequest(
@@ -95,17 +99,19 @@ def main() -> None:
                     "sancap": save_upload(sancap_upload, directory, "sancap.xlsx"),
                 },
                 output_path=directory / clean_output_filename,
+                reporting_year=int(reporting_year),
             )
             pipeline = build_pipeline()
-            progress = st.progress(0, text="Preparing refresh.")
-            with st.status("Refreshing workbook", expanded=True) as status:
+            progress = st.progress(0, text=f"Preparing {request.reporting_year} refresh.")
+            with st.status(f"Refreshing {request.reporting_year} workbook", expanded=True) as status:
                 for event in pipeline.run(request):
                     progress.progress(event.percent, text=event.message)
                     status.write(event.message)
                 if pipeline.result.success:
-                    status.update(label="Refresh complete", state="complete", expanded=False)
+                    status.update(label=f"{request.reporting_year} refresh complete", state="complete", expanded=False)
                     st.session_state["output_bytes"] = request.output_path.read_bytes()
                     st.session_state["output_filename"] = clean_output_filename
+                    st.session_state["run_reporting_year"] = request.reporting_year
                 else:
                     status.update(label="Refresh stopped", state="error", expanded=True)
             st.session_state["run_result"] = pipeline.result

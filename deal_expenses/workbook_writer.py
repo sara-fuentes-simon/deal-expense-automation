@@ -134,6 +134,7 @@ class ExcelComWorkbookWriter(WorkbookWriter):
     def write(self, request: RunRequest) -> dict[str, int | float]:
         """Refresh the master using BSNY rows first and SanCap rows second."""
         try:
+            import pythoncom
             import win32com.client as win32
         except ImportError as error:
             raise RuntimeError("pywin32 is required. Install it with 'pip install pywin32'.") from error
@@ -146,7 +147,10 @@ class ExcelComWorkbookWriter(WorkbookWriter):
         excel = master_workbook = bsny_workbook = sancap_workbook = staging_sheet = None
         refresh_succeeded = False
         original_autofill = None
+        com_initialized = False
         try:
+            pythoncom.CoInitialize()
+            com_initialized = True
             excel = win32.DispatchEx("Excel.Application")
             excel.Visible = False
             excel.DisplayAlerts = False
@@ -255,3 +259,5 @@ class ExcelComWorkbookWriter(WorkbookWriter):
                 if original_autofill is not None:
                     excel.AutoCorrect.AutoFillFormulasInLists = original_autofill
                 excel.Quit()
+            if com_initialized:
+                pythoncom.CoUninitialize()
