@@ -1,0 +1,11 @@
+2026-08-16 20:17:10 | INFO     | SAP refresh started for reporting year 2026
+2026-08-16 20:17:10 | INFO     | Run log: outputs\sap_refresh_20260816_201710.log
+2026-08-16 20:17:10 | INFO     | Master input: samples\Expense Report Relating to deals 01-01-26 to 5-31-26 - COMBINED_VORIGINAL.xlsx
+2026-08-16 20:17:10 | INFO     | BSNY source: samples\BSNY - SAP & Concur Repoort May 2025 - June 2026.xlsx
+2026-08-16 20:17:10 | INFO     | SANCAP source: samples\SanCap - VIM STATUS REPORT 2026-07-01 8.49 AM.xlsx
+2026-08-16 20:17:10 | ERROR    | SAP refresh failed: Set IN_SCOPE_COST_CENTERS before running the SAP refresh.
+Traceback (most recent call last):
+  File "C:\Users\safuente\AppData\Local\Temp\ipykernel_23816\2821139163.py", line 60, in run_sap_refresh
+    raise ValueError("Set IN_SCOPE_COST_CENTERS before running the SAP refresh.")
+ValueError: Set IN_SCOPE_COST_CENTERS before running the SAP refresh.
+2026-08-16 20:17:10 | INFO     | SAP refresh finished; log file: outputs\sap_refresh_20260816_201710.log
