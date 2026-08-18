@@ -1,6 +1,6 @@
 # Deal Expenses Automation
 
-Local Streamlit application for refreshing a deal expense master workbook from BSNY and SanCap reports.
+Local Streamlit application for refreshing the Concur and SAP sections of one deal expense master workbook.
 
 ## Requirements
 
@@ -27,9 +27,9 @@ If `win32com` is unavailable after installation:
 .\venv\Scripts\streamlit.exe run app.py
 ```
 
-Upload the master workbook, BSNY Concur report, and SanCap expense report. Enter the desired `.xlsx` output name and download the validated result.
+Upload the master workbook, BSNY and SanCap Concur reports, and BSNY and SanCap SAP reports. Enter the desired `.xlsx` output name and download one combined refreshed workbook.
 
-The application uses Microsoft Excel automation to retain workbook tables, formatting, and helper formulas. Uploaded files are kept only in a temporary directory during the refresh; the completed workbook is retained in the browser session for download.
+The application refreshes Concur first, then appends validated SAP rows to that same temporary workbook. The SAP refresh requires the master to contain `SAP Report` or `SAP Invoices Report`, an `In Scope CCs` sheet, and the expected SAP master headers. Uploaded files are kept only in a temporary directory during the refresh; the completed workbook is retained in the browser session for download.
 
 ## Test
 

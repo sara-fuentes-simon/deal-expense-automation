@@ -10,6 +10,7 @@ import streamlit as st
 
 from deal_expenses.models import RunRequest, sanitize_output_filename
 from deal_expenses.pipeline import DealExpensePipeline
+from deal_expenses.sap_refresh import SapRefreshResult, refresh_sap_workbook
 from deal_expenses.sources import BsnyConcurAdapter, SanCapAdapter
 from deal_expenses.validation import MasterWorkbookValidator
 from deal_expenses.workbook_writer import ExcelComWorkbookWriter
@@ -47,8 +48,14 @@ def render_results() -> None:
         columns[1].metric("BSNY rows", f"{result.source_summaries[0].row_count:,}")
         columns[2].metric("SanCap rows", f"{result.source_summaries[1].row_count:,}")
         columns[3].metric("Expense total", f"${result.total_expense:,.2f}")
+        sap_result: SapRefreshResult | None = st.session_state.get("sap_result")
+        if sap_result is not None:
+            sap_columns = st.columns(3)
+            sap_columns[0].metric("SAP BSNY rows", f"{sap_result.bsny_rows:,}")
+            sap_columns[1].metric("SAP SanCap rows", f"{sap_result.sancap_rows:,}")
+            sap_columns[2].metric("New SAP rows", f"{sap_result.appended_rows:,}")
         st.download_button(
-            "Download refreshed workbook",
+            "Download combined refreshed workbook",
             data=st.session_state["output_bytes"],
             file_name=st.session_state["output_filename"],
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -65,21 +72,28 @@ def render_results() -> None:
 
 def main() -> None:
     st.title("Deal Expenses Automation")
-    st.caption("Refresh the deal expense master workbook from BSNY and SanCap source reports.")
+    st.caption("Refresh the Concur and SAP sections of one deal expense master workbook.")
 
-    left_column, right_column = st.columns(2)
-    with left_column:
+    concur_column, sap_column = st.columns(2)
+    with concur_column:
+        st.subheader("Concur Sources")
         master_upload = st.file_uploader("Master workbook", type=["xlsx"], key="master")
         bsny_upload = st.file_uploader("BSNY Concur report", type=["xlsx"], key="bsny")
-    with right_column:
-        sancap_upload = st.file_uploader("SanCap expense report", type=["xlsx"], key="sancap")
+        sancap_upload = st.file_uploader("SanCap Concur report", type=["xlsx"], key="sancap")
+    with sap_column:
+        st.subheader("SAP Sources")
+        bsny_sap_upload = st.file_uploader("BSNY SAP report", type=["xlsx"], key="bsny_sap")
+        sancap_sap_upload = st.file_uploader("SanCap SAP report", type=["xlsx"], key="sancap_sap")
+
+    settings_column, _ = st.columns(2)
+    with settings_column:
         output_filename = st.text_input("Output master filename", value="refreshed_deal_expenses.xlsx")
         reporting_year = st.number_input("Reporting year", value=date.today().year, step=1, format="%d")
 
-    run_requested = st.button("Refresh master workbook", type="primary", use_container_width=True)
+    run_requested = st.button("Refresh combined master workbook", type="primary", use_container_width=True)
     if run_requested:
-        if not all([master_upload, bsny_upload, sancap_upload]):
-            st.error("Upload the master workbook, BSNY report, and SanCap report before running.")
+        if not all([master_upload, bsny_upload, sancap_upload, bsny_sap_upload, sancap_sap_upload]):
+            st.error("Upload the master workbook and all Concur and SAP source reports before running.")
             return
         try:
             clean_output_filename = sanitize_output_filename(output_filename)
@@ -90,6 +104,7 @@ def main() -> None:
         st.session_state.pop("run_result", None)
         st.session_state.pop("output_bytes", None)
         st.session_state.pop("run_reporting_year", None)
+        st.session_state.pop("sap_result", None)
         with TemporaryDirectory(prefix="deal_expenses_") as temporary_directory:
             directory = Path(temporary_directory)
             request = RunRequest(
@@ -108,10 +123,25 @@ def main() -> None:
                     progress.progress(event.percent, text=event.message)
                     status.write(event.message)
                 if pipeline.result.success:
-                    status.update(label=f"{request.reporting_year} refresh complete", state="complete", expanded=False)
-                    st.session_state["output_bytes"] = request.output_path.read_bytes()
-                    st.session_state["output_filename"] = clean_output_filename
-                    st.session_state["run_reporting_year"] = request.reporting_year
+                    try:
+                        status.write(f"Refreshing SAP data for {request.reporting_year}.")
+                        sap_result = refresh_sap_workbook(
+                            request.output_path,
+                            save_upload(bsny_sap_upload, directory, "bsny_sap.xlsx"),
+                            save_upload(sancap_sap_upload, directory, "sancap_sap.xlsx"),
+                            request.reporting_year,
+                        )
+                    except Exception as error:
+                        pipeline.result.success = False
+                        pipeline.result.error_message = f"SAP refresh failed: {error}"
+                        status.update(label="Refresh stopped", state="error", expanded=True)
+                    else:
+                        status.write(f"Appended {sap_result.appended_rows:,} SAP row(s).")
+                        status.update(label=f"{request.reporting_year} combined refresh complete", state="complete", expanded=False)
+                        st.session_state["output_bytes"] = request.output_path.read_bytes()
+                        st.session_state["output_filename"] = clean_output_filename
+                        st.session_state["run_reporting_year"] = request.reporting_year
+                        st.session_state["sap_result"] = sap_result
                 else:
                     status.update(label="Refresh stopped", state="error", expanded=True)
             st.session_state["run_result"] = pipeline.result
