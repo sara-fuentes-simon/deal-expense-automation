@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from deal_expenses.sources.sap_base import SapSourceAdapter
+from deal_expenses.sources.base_sap import SapSourceAdapter
 
 
 class SanCapSapAdapter(SapSourceAdapter):

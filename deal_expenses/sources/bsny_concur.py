@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from deal_expenses.sources.base import SourceAdapter
+from deal_expenses.sources.base_concur import SourceAdapter
 
 
 class BsnyConcurAdapter(SourceAdapter):

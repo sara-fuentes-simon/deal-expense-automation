@@ -1,4 +1,4 @@
-"""Excel COM implementation for refreshing the master workbook."""
+"""Excel COM writer for refreshing the Concur section of the master workbook."""
 
 from __future__ import annotations
 
@@ -7,9 +7,9 @@ from pathlib import Path
 import shutil
 import sys
 
+from deal_expenses.concur_validation import ConcurMasterWorkbookValidator
 from deal_expenses.models import RunRequest
-from deal_expenses.sources.base import EXPENSE_HEADER, SOURCE_TO_MASTER, YEAR_HEADER, is_reporting_year, normalize_header
-from deal_expenses.validation import MasterWorkbookValidator
+from deal_expenses.sources.base_concur import EXPENSE_HEADER, SOURCE_TO_MASTER, YEAR_HEADER, is_reporting_year, normalize_header
 
 
 XL_UP = -4162
@@ -20,20 +20,20 @@ XL_PASTE_VALUES = -4163
 XL_SHEET_VERY_HIDDEN = 2
 
 
-class WorkbookWriter(ABC):
-    """Writes one validated run into an output workbook."""
+class ConcurWorkbookWriter(ABC):
+    """Writes one validated Concur refresh into an output workbook."""
 
     @abstractmethod
     def write(self, request: RunRequest) -> dict[str, int | float]:
         """Create the output workbook and return final metrics."""
 
 
-class ExcelComWorkbookWriter(WorkbookWriter):
-    """Windows Microsoft Excel writer preserving formulas, tables, and formatting."""
+class ConcurExcelComWorkbookWriter(ConcurWorkbookWriter):
+    """Windows Microsoft Excel writer preserving Concur formulas, tables, and formatting."""
 
     master_sheet_name = "Concur Report"
     bsny_sheet_name = "Concur"
-    helper_headers = MasterWorkbookValidator.helper_headers
+    helper_headers = ConcurMasterWorkbookValidator.helper_headers
 
     def __init__(self) -> None:
         if sys.platform != "win32":
@@ -132,7 +132,7 @@ class ExcelComWorkbookWriter(WorkbookWriter):
                 return
 
     def write(self, request: RunRequest) -> dict[str, int | float]:
-        """Refresh the master using BSNY rows first and SanCap rows second."""
+        """Refresh the Concur master using BSNY rows first and SanCap rows second."""
         try:
             import pythoncom
             import win32com.client as win32

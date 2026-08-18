@@ -1,23 +1,23 @@
-"""Application service that coordinates one deal expense refresh."""
+"""Application service that coordinates one Concur workbook refresh."""
 
 from __future__ import annotations
 
 from collections.abc import Iterator
 
+from deal_expenses.concur_validation import ConcurMasterWorkbookValidator
 from deal_expenses.models import ProgressEvent, RunRequest, RunResult, ValidationResult
-from deal_expenses.sources.base import SourceAdapter
-from deal_expenses.validation import MasterWorkbookValidator
-from deal_expenses.workbook_writer import WorkbookWriter
+from deal_expenses.sources.base_concur import SourceAdapter
+from deal_expenses.concur_workbook_writer import ConcurWorkbookWriter
 
 
-class DealExpensePipeline:
-    """Run read-only preflight checks before delegating workbook mutation to a writer."""
+class ConcurExpensePipeline:
+    """Run Concur preflight checks before delegating workbook mutation to a writer."""
 
     def __init__(
         self,
         adapters: list[SourceAdapter],
-        master_validator: MasterWorkbookValidator,
-        workbook_writer: WorkbookWriter,
+        master_validator: ConcurMasterWorkbookValidator,
+        workbook_writer: ConcurWorkbookWriter,
     ) -> None:
         self._adapters = {adapter.key: adapter for adapter in adapters}
         self._master_validator = master_validator
@@ -28,7 +28,7 @@ class DealExpensePipeline:
         validations: list[ValidationResult] = []
         summaries = []
         try:
-            yield ProgressEvent("Preflight", f"Checking uploaded workbooks for {request.reporting_year} data.", 10)
+            yield ProgressEvent("Concur preflight", f"Checking Concur workbooks for {request.reporting_year} data.", 10)
             request.validate_paths_exist()
             master_checks = self._master_validator.validate(request.master_path)
             validations.extend(master_checks)
@@ -41,7 +41,7 @@ class DealExpensePipeline:
                 if key not in request.source_paths:
                     raise ValueError(f"No upload was supplied for {adapter.display_name}.")
                 yield ProgressEvent(
-                    "Source validation",
+                    "Concur source validation",
                     f"Checking {adapter.display_name} for {request.reporting_year} data.",
                     10 + index * 15,
                 )
@@ -54,8 +54,8 @@ class DealExpensePipeline:
                 summaries.append(adapter.summarize(request.source_paths[key], request.reporting_year))
 
             yield ProgressEvent(
-                "Excel refresh",
-                f"Refreshing the master workbook with {request.reporting_year} data in Microsoft Excel.",
+                "Concur Excel refresh",
+                f"Refreshing Concur data for {request.reporting_year} in Microsoft Excel.",
                 50,
             )
             metrics = self._workbook_writer.write(request)
@@ -67,7 +67,7 @@ class DealExpensePipeline:
                 source_summaries=summaries,
                 total_expense=total_expense,
             )
-            yield ProgressEvent("Complete", f"{request.reporting_year} workbook refreshed and validated.", 100)
+            yield ProgressEvent("Complete", f"Concur {request.reporting_year} data refreshed and validated.", 100)
         except Exception as error:
             self.result = RunResult(
                 success=False,

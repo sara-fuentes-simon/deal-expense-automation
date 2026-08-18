@@ -1,4 +1,4 @@
-"""Structural validation for the master workbook."""
+"""Structural validation for the Concur section of the master workbook."""
 
 from __future__ import annotations
 
@@ -8,11 +8,11 @@ from pathlib import Path
 from openpyxl import load_workbook
 
 from deal_expenses.models import ValidationResult
-from deal_expenses.sources.base import EXPENSE_HEADER, SOURCE_TO_MASTER, YEAR_HEADER, normalize_header
+from deal_expenses.sources.base_concur import EXPENSE_HEADER, SOURCE_TO_MASTER, YEAR_HEADER, normalize_header
 
 
-class MasterWorkbookValidator:
-    """Verify the target workbook can safely receive refreshed source rows."""
+class ConcurMasterWorkbookValidator:
+    """Verify the master workbook can safely receive Concur source rows."""
 
     sheet_name = "Concur Report"
     helper_headers = (
@@ -28,7 +28,7 @@ class MasterWorkbookValidator:
             workbook = load_workbook(master_path, read_only=True, data_only=False)
             try:
                 if self.sheet_name not in workbook.sheetnames:
-                    return [ValidationResult("Master workbook", False, f"Worksheet '{self.sheet_name}' was not found.")]
+                    return [ValidationResult("Concur master workbook", False, f"Worksheet '{self.sheet_name}' was not found.")]
                 worksheet = workbook[self.sheet_name]
                 header_columns = defaultdict(list)
                 for column_number, cell in enumerate(worksheet[1], start=1):
@@ -37,17 +37,13 @@ class MasterWorkbookValidator:
                         header_columns[header].append(column_number)
 
                 required_headers = (*self.helper_headers, *SOURCE_TO_MASTER.values(), YEAR_HEADER, EXPENSE_HEADER)
-                invalid_headers = [
-                    header
-                    for header in required_headers
-                    if len(header_columns[header]) != 1
-                ]
+                invalid_headers = [header for header in required_headers if len(header_columns[header]) != 1]
                 if invalid_headers:
                     details = []
                     for header in invalid_headers:
                         columns = header_columns[header]
                         details.append(f"'{header}' is missing" if not columns else f"'{header}' is repeated")
-                    return [ValidationResult("Master workbook", False, "; ".join(details) + ".")]
+                    return [ValidationResult("Concur master workbook", False, "; ".join(details) + ".")]
 
                 missing_formulas = []
                 for helper_header in self.helper_headers:
@@ -57,7 +53,7 @@ class MasterWorkbookValidator:
                 if missing_formulas:
                     return [
                         ValidationResult(
-                            "Master workbook",
+                            "Concur master workbook",
                             False,
                             "Missing row 2 formula template for: " + ", ".join(missing_formulas),
                         )
@@ -65,6 +61,6 @@ class MasterWorkbookValidator:
             finally:
                 workbook.close()
         except Exception as error:
-            return [ValidationResult("Master workbook", False, str(error))]
+            return [ValidationResult("Concur master workbook", False, str(error))]
 
-        return [ValidationResult("Master workbook", True, "Workbook structure and helper formulas are valid.")]
+        return [ValidationResult("Concur master workbook", True, "Workbook structure and helper formulas are valid.")]

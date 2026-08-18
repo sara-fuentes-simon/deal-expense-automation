@@ -1,4 +1,4 @@
-"""Contracts and reusable preflight logic for source workbook formats."""
+"""Contracts and reusable preflight logic for Concur source workbook formats."""
 
 from __future__ import annotations
 
@@ -31,7 +31,7 @@ def is_reporting_year(value: object, year: int) -> bool:
 
 
 class SourceAdapter(ABC):
-    """Defines how one source workbook type is validated and summarized."""
+    """Defines how one Concur source workbook is validated and summarized."""
 
     key: str
     display_name: str

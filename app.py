@@ -9,24 +9,24 @@ from tempfile import TemporaryDirectory
 import streamlit as st
 
 from deal_expenses.models import RunRequest, SapRunRequest, sanitize_output_filename
-from deal_expenses.pipeline import DealExpensePipeline
+from deal_expenses.concur_pipeline import ConcurExpensePipeline
 from deal_expenses.sap_pipeline import SapExpensePipeline
 from deal_expenses.sap_validation import SapMasterWorkbookValidator
 from deal_expenses.sap_workbook_writer import SapExcelComWorkbookWriter
-from deal_expenses.sources import BsnyConcurAdapter, BsnySapAdapter, SanCapAdapter, SanCapSapAdapter
-from deal_expenses.validation import MasterWorkbookValidator
-from deal_expenses.workbook_writer import ExcelComWorkbookWriter
+from deal_expenses.sources import BsnyConcurAdapter, BsnySapAdapter, SanCapConcurAdapter, SanCapSapAdapter
+from deal_expenses.concur_validation import ConcurMasterWorkbookValidator
+from deal_expenses.concur_workbook_writer import ConcurExcelComWorkbookWriter
 
 
 st.set_page_config(page_title="Deal Expenses Automation", page_icon=":material/receipt_long:", layout="wide")
 
 
 @st.cache_resource
-def build_pipeline() -> DealExpensePipeline:
-    return DealExpensePipeline(
-        adapters=[BsnyConcurAdapter(), SanCapAdapter()],
-        master_validator=MasterWorkbookValidator(),
-        workbook_writer=ExcelComWorkbookWriter(),
+def build_concur_pipeline() -> ConcurExpensePipeline:
+    return ConcurExpensePipeline(
+        adapters=[BsnyConcurAdapter(), SanCapConcurAdapter()],
+        master_validator=ConcurMasterWorkbookValidator(),
+        workbook_writer=ConcurExcelComWorkbookWriter(),
     )
 
 
@@ -133,7 +133,7 @@ def main() -> None:
                 output_path=directory / clean_output_filename,
                 reporting_year=int(reporting_year),
             )
-            pipeline = build_pipeline()
+            pipeline = build_concur_pipeline()
             progress = st.progress(0, text=f"Preparing {request.reporting_year} refresh.")
             with st.status(f"Refreshing {request.reporting_year} workbook", expanded=True) as status:
                 for event in pipeline.run(request):

@@ -7,7 +7,7 @@ from pathlib import Path
 from openpyxl import load_workbook
 
 from deal_expenses.models import ValidationResult
-from deal_expenses.sources.sap_base import (
+from deal_expenses.sources.base_sap import (
     COST_CENTER_HEADER,
     DOCUMENT_ID_HEADER,
     GROSS_AMOUNT_HEADER,

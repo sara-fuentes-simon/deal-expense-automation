@@ -3,14 +3,14 @@ from pathlib import Path
 import pytest
 
 from deal_expenses.models import RunRequest, SapRunRequest, SourceSummary, ValidationResult
-from deal_expenses.pipeline import DealExpensePipeline
+from deal_expenses.concur_pipeline import ConcurExpensePipeline
 from deal_expenses.sap_pipeline import SapExpensePipeline
-from deal_expenses.sources import BsnyConcurAdapter, SanCapAdapter
-from deal_expenses.validation import MasterWorkbookValidator
-from deal_expenses.workbook_writer import WorkbookWriter
+from deal_expenses.sources import BsnyConcurAdapter, SanCapConcurAdapter
+from deal_expenses.concur_validation import ConcurMasterWorkbookValidator
+from deal_expenses.concur_workbook_writer import ConcurWorkbookWriter
 
 
-class StubWriter(WorkbookWriter):
+class StubWriter(ConcurWorkbookWriter):
     def write(self, request: RunRequest) -> dict[str, int | float]:
         return {"bsny_rows": 1, "sancap_rows": 1, "total_expense": 30.0}
 
@@ -49,9 +49,9 @@ def test_pipeline_completes_preflight_with_sample_workbooks(reporting_year: int)
         output_path=Path("outputs/test.xlsx"),
         reporting_year=reporting_year,
     )
-    pipeline = DealExpensePipeline(
-        [BsnyConcurAdapter(), SanCapAdapter()],
-        MasterWorkbookValidator(),
+    pipeline = ConcurExpensePipeline(
+        [BsnyConcurAdapter(), SanCapConcurAdapter()],
+        ConcurMasterWorkbookValidator(),
         StubWriter(),
     )
 
