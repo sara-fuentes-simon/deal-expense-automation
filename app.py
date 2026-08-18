@@ -8,10 +8,12 @@ from tempfile import TemporaryDirectory
 
 import streamlit as st
 
-from deal_expenses.models import RunRequest, sanitize_output_filename
+from deal_expenses.models import RunRequest, SapRunRequest, sanitize_output_filename
 from deal_expenses.pipeline import DealExpensePipeline
-from deal_expenses.sap_refresh import SapRefreshResult, refresh_sap_workbook
-from deal_expenses.sources import BsnyConcurAdapter, SanCapAdapter
+from deal_expenses.sap_pipeline import SapExpensePipeline
+from deal_expenses.sap_validation import SapMasterWorkbookValidator
+from deal_expenses.sap_workbook_writer import SapExcelComWorkbookWriter
+from deal_expenses.sources import BsnyConcurAdapter, BsnySapAdapter, SanCapAdapter, SanCapSapAdapter
 from deal_expenses.validation import MasterWorkbookValidator
 from deal_expenses.workbook_writer import ExcelComWorkbookWriter
 
@@ -25,6 +27,15 @@ def build_pipeline() -> DealExpensePipeline:
         adapters=[BsnyConcurAdapter(), SanCapAdapter()],
         master_validator=MasterWorkbookValidator(),
         workbook_writer=ExcelComWorkbookWriter(),
+    )
+
+
+@st.cache_resource
+def build_sap_pipeline() -> SapExpensePipeline:
+    return SapExpensePipeline(
+        adapters=[BsnySapAdapter(), SanCapSapAdapter()],
+        master_validator=SapMasterWorkbookValidator(),
+        workbook_writer=SapExcelComWorkbookWriter(),
     )
 
 
@@ -48,12 +59,12 @@ def render_results() -> None:
         columns[1].metric("BSNY rows", f"{result.source_summaries[0].row_count:,}")
         columns[2].metric("SanCap rows", f"{result.source_summaries[1].row_count:,}")
         columns[3].metric("Expense total", f"${result.total_expense:,.2f}")
-        sap_result: SapRefreshResult | None = st.session_state.get("sap_result")
+        sap_result: dict[str, int] | None = st.session_state.get("sap_result")
         if sap_result is not None:
             sap_columns = st.columns(3)
-            sap_columns[0].metric("SAP BSNY rows", f"{sap_result.bsny_rows:,}")
-            sap_columns[1].metric("SAP SanCap rows", f"{sap_result.sancap_rows:,}")
-            sap_columns[2].metric("New SAP rows", f"{sap_result.appended_rows:,}")
+            sap_columns[0].metric("SAP BSNY rows", f"{sap_result['bsny_rows']:,}")
+            sap_columns[1].metric("SAP SanCap rows", f"{sap_result['sancap_rows']:,}")
+            sap_columns[2].metric("New SAP rows", f"{sap_result['appended_rows']:,}")
         st.download_button(
             "Download combined refreshed workbook",
             data=st.session_state["output_bytes"],
@@ -64,6 +75,11 @@ def render_results() -> None:
 
     with st.expander("Validation details"):
         for validation in result.validations:
+            if validation.passed:
+                st.success(f"{validation.name}: {validation.message}")
+            else:
+                st.error(f"{validation.name}: {validation.message}")
+        for validation in st.session_state.get("sap_validations", []):
             if validation.passed:
                 st.success(f"{validation.name}: {validation.message}")
             else:
@@ -105,6 +121,7 @@ def main() -> None:
         st.session_state.pop("output_bytes", None)
         st.session_state.pop("run_reporting_year", None)
         st.session_state.pop("sap_result", None)
+        st.session_state.pop("sap_validations", None)
         with TemporaryDirectory(prefix="deal_expenses_") as temporary_directory:
             directory = Path(temporary_directory)
             request = RunRequest(
@@ -123,25 +140,32 @@ def main() -> None:
                     progress.progress(event.percent, text=event.message)
                     status.write(event.message)
                 if pipeline.result.success:
-                    try:
-                        status.write(f"Refreshing SAP data for {request.reporting_year}.")
-                        sap_result = refresh_sap_workbook(
-                            request.output_path,
-                            save_upload(bsny_sap_upload, directory, "bsny_sap.xlsx"),
-                            save_upload(sancap_sap_upload, directory, "sancap_sap.xlsx"),
-                            request.reporting_year,
-                        )
-                    except Exception as error:
+                    sap_request = SapRunRequest(
+                        master_path=request.output_path,
+                        source_paths={
+                            "bsny": save_upload(bsny_sap_upload, directory, "bsny_sap.xlsx"),
+                            "sancap": save_upload(sancap_sap_upload, directory, "sancap_sap.xlsx"),
+                        },
+                        reporting_year=request.reporting_year,
+                    )
+                    sap_pipeline = build_sap_pipeline()
+                    for event in sap_pipeline.run(sap_request):
+                        progress.progress(event.percent, text=event.message)
+                        status.write(event.message)
+                    if not sap_pipeline.result.success:
                         pipeline.result.success = False
-                        pipeline.result.error_message = f"SAP refresh failed: {error}"
+                        pipeline.result.error_message = f"SAP refresh failed: {sap_pipeline.result.error_message}"
+                        st.session_state["sap_validations"] = sap_pipeline.result.validations
                         status.update(label="Refresh stopped", state="error", expanded=True)
                     else:
-                        status.write(f"Appended {sap_result.appended_rows:,} SAP row(s).")
+                        sap_result = sap_pipeline.metrics
+                        status.write(f"Appended {sap_result['appended_rows']:,} SAP row(s).")
                         status.update(label=f"{request.reporting_year} combined refresh complete", state="complete", expanded=False)
                         st.session_state["output_bytes"] = request.output_path.read_bytes()
                         st.session_state["output_filename"] = clean_output_filename
                         st.session_state["run_reporting_year"] = request.reporting_year
                         st.session_state["sap_result"] = sap_result
+                        st.session_state["sap_validations"] = sap_pipeline.result.validations
                 else:
                     status.update(label="Refresh stopped", state="error", expanded=True)
             st.session_state["run_result"] = pipeline.result

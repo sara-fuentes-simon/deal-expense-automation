@@ -43,6 +43,21 @@ class RunRequest:
 
 
 @dataclass(frozen=True)
+class SapRunRequest:
+    """File paths and settings for one SAP refresh into an existing workbook."""
+
+    master_path: Path
+    source_paths: dict[str, Path]
+    reporting_year: int
+
+    def validate_paths_exist(self) -> None:
+        paths = [self.master_path, *self.source_paths.values()]
+        missing_paths = [str(path) for path in paths if not path.is_file()]
+        if missing_paths:
+            raise FileNotFoundError("Required workbook(s) not found:\n" + "\n".join(missing_paths))
+
+
+@dataclass(frozen=True)
 class SourceSummary:
     """Preflight metrics for one source workbook."""
 

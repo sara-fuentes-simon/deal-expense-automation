@@ -1,4 +1,4 @@
-"""SAP workbook refresh used by the Streamlit application."""
+"""Excel COM writer for appending SAP data to a refreshed master workbook."""
 
 from __future__ import annotations
 
@@ -10,6 +10,8 @@ from pathlib import Path
 from typing import Any
 
 from openpyxl import load_workbook
+
+from deal_expenses.models import SapRunRequest
 
 
 MASTER_SHEET_NAMES = ("SAP Report", "SAP Invoices Report")
@@ -41,13 +43,6 @@ class SapSourceRow:
     @property
     def key(self) -> tuple[str, str] | None:
         return (self.entity, self.document_id) if self.document_id else None
-
-
-@dataclass(frozen=True)
-class SapRefreshResult:
-    bsny_rows: int
-    sancap_rows: int
-    appended_rows: int
 
 
 def _normalize(value: Any) -> str:
@@ -308,8 +303,8 @@ def _validate_output(output_path: Path) -> None:
         workbook.close()
 
 
-def refresh_sap_workbook(master_path: Path, bsny_path: Path, sancap_path: Path, reporting_year: int) -> SapRefreshResult:
-    """Append validated SAP rows to ``master_path`` in place using Microsoft Excel."""
+def _write_sap_refresh(request: SapRunRequest) -> dict[str, int]:
+    """Append validated SAP rows to the existing output workbook."""
     try:
         import pythoncom
         import win32com.client as win32
@@ -324,9 +319,9 @@ def refresh_sap_workbook(master_path: Path, bsny_path: Path, sancap_path: Path, 
         excel.Visible = False
         excel.DisplayAlerts = False
         excel.ScreenUpdating = False
-        master_book = excel.Workbooks.Open(str(master_path.resolve()), ReadOnly=False)
-        bsny_book = excel.Workbooks.Open(str(bsny_path.resolve()), ReadOnly=True)
-        sancap_book = excel.Workbooks.Open(str(sancap_path.resolve()), ReadOnly=True)
+        master_book = excel.Workbooks.Open(str(request.master_path.resolve()), ReadOnly=False)
+        bsny_book = excel.Workbooks.Open(str(request.source_paths["bsny"].resolve()), ReadOnly=True)
+        sancap_book = excel.Workbooks.Open(str(request.source_paths["sancap"].resolve()), ReadOnly=True)
         if sancap_book.Worksheets.Count != 1:
             raise ValueError("The SANCAP SAP report must contain exactly one worksheet.")
         master_sheet = _resolve_master_sheet(master_book)
@@ -334,17 +329,21 @@ def refresh_sap_workbook(master_path: Path, bsny_path: Path, sancap_path: Path, 
         sancap_sheet = sancap_book.Worksheets(1)
         scoped_cost_centers = _load_in_scope_cost_centers(master_book)
         headers, master_rows = _master_rows(master_sheet)
-        bsny_rows = _source_rows(bsny_sheet, "BSNY", reporting_year)
-        sancap_rows = _source_rows(sancap_sheet, "SANCAP", reporting_year)
+        bsny_rows = _source_rows(bsny_sheet, "BSNY", request.reporting_year)
+        sancap_rows = _source_rows(sancap_sheet, "SANCAP", request.reporting_year)
         if not bsny_rows or not sancap_rows:
-            raise ValueError(f"No posted {reporting_year} SAP data was found in one or both source workbooks.")
-        new_rows = _validate_controls([*bsny_rows, *sancap_rows], master_rows, reporting_year, scoped_cost_centers)
+            raise ValueError(f"No posted {request.reporting_year} SAP data was found in one or both source workbooks.")
+        new_rows = _validate_controls([*bsny_rows, *sancap_rows], master_rows, request.reporting_year, scoped_cost_centers)
         _append_rows(master_sheet, headers, new_rows)
         excel.Calculation = XL_CALCULATION_AUTOMATIC
         excel.CalculateFull()
         master_book.Save()
         refresh_succeeded = True
-        return SapRefreshResult(len(bsny_rows), len(sancap_rows), len(new_rows))
+        return {
+            "bsny_rows": len(bsny_rows),
+            "sancap_rows": len(sancap_rows),
+            "appended_rows": len(new_rows),
+        }
     finally:
         for workbook in (master_book, bsny_book, sancap_book):
             if workbook is not None:
@@ -352,4 +351,12 @@ def refresh_sap_workbook(master_path: Path, bsny_path: Path, sancap_path: Path, 
         if excel is not None:
             excel.Quit()
         pythoncom.CoUninitialize()
-    
+
+
+class SapExcelComWorkbookWriter:
+    """Windows Microsoft Excel writer for SAP data and formulas."""
+
+    def write(self, request: SapRunRequest) -> dict[str, int]:
+        request.validate_paths_exist()
+        return _write_sap_refresh(request)
+
