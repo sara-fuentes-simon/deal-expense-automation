@@ -6,9 +6,11 @@ from datetime import date
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+import pandas as pd
 import streamlit as st
 
 from deal_expenses.models import RunRequest, SapRunRequest, sanitize_output_filename
+from deal_expenses.pivot_preview import PivotPreview, extract_pivot_previews
 from deal_expenses.concur_pipeline import ConcurExpensePipeline
 from deal_expenses.sap_pipeline import SapExpensePipeline
 from deal_expenses.sap_validation import SapMasterWorkbookValidator
@@ -45,6 +47,41 @@ def save_upload(upload, directory: Path, filename: str) -> Path:
     return path
 
 
+def render_pivot_previews() -> None:
+    previews: dict[str, list[PivotPreview]] = st.session_state.get("pivot_previews", {})
+    preview_error: str | None = st.session_state.get("pivot_preview_error")
+    if not previews and preview_error is None:
+        return
+
+    st.subheader("Analysis pivots")
+    if preview_error is not None:
+        st.warning(f"Pivot previews could not be loaded: {preview_error}")
+        return
+
+    for column, sheet_name, title in zip(
+        st.columns(2),
+        ("Concur Analysis - PIVOTS", "SAP Invoices Analysis - PIVOTS"),
+        ("Concur expenses by LOB", "SAP invoices by LOB"),
+        strict=True,
+    ):
+        with column:
+            st.markdown(f"**{title}**")
+            sheet_previews = previews.get(sheet_name, [])
+            if not sheet_previews:
+                st.info("No pivot table was found on this worksheet.")
+                continue
+            preview = sheet_previews[0]
+            dataframe = pd.DataFrame(preview.rows, columns=preview.headers)
+            st.dataframe(
+                dataframe.style.apply(
+                    lambda row: ["font-weight: bold" if preview.emphasis_rows[row.name] else ""] * len(row),
+                    axis=1,
+                ).format(precision=2, thousands=","),
+                hide_index=True,
+                height=min(420, 72 + len(dataframe) * 35),
+            )
+
+
 def render_results() -> None:
     result = st.session_state.get("run_result")
     if result is None:
@@ -65,6 +102,7 @@ def render_results() -> None:
             sap_columns[0].metric("SAP BSNY rows", f"{sap_result['bsny_rows']:,}")
             sap_columns[1].metric("SAP SanCap rows", f"{sap_result['sancap_rows']:,}")
             sap_columns[2].metric("New SAP rows", f"{sap_result['appended_rows']:,}")
+        render_pivot_previews()
         st.download_button(
             "Download combined refreshed workbook",
             data=st.session_state["output_bytes"],
@@ -90,10 +128,11 @@ def main() -> None:
     st.title("Deal Expenses Automation")
     st.caption("Refresh the Concur and SAP sections of one deal expense master workbook.")
 
+    master_upload = st.file_uploader("Master workbook", type=["xlsx"], key="master")
+
     concur_column, sap_column = st.columns(2)
     with concur_column:
         st.subheader("Concur Sources")
-        master_upload = st.file_uploader("Master workbook", type=["xlsx"], key="master")
         bsny_upload = st.file_uploader("BSNY Concur report", type=["xlsx"], key="bsny")
         sancap_upload = st.file_uploader("SanCap Concur report", type=["xlsx"], key="sancap")
     with sap_column:
@@ -106,7 +145,7 @@ def main() -> None:
         output_filename = st.text_input("Output master filename", value="refreshed_deal_expenses.xlsx")
         reporting_year = st.number_input("Reporting year", value=date.today().year, step=1, format="%d")
 
-    run_requested = st.button("Refresh combined master workbook", type="primary", use_container_width=True)
+    run_requested = st.button("Refresh combined master workbook", type="primary", width="stretch")
     if run_requested:
         if not all([master_upload, bsny_upload, sancap_upload, bsny_sap_upload, sancap_sap_upload]):
             st.error("Upload the master workbook and all Concur and SAP source reports before running.")
@@ -122,6 +161,8 @@ def main() -> None:
         st.session_state.pop("run_reporting_year", None)
         st.session_state.pop("sap_result", None)
         st.session_state.pop("sap_validations", None)
+        st.session_state.pop("pivot_previews", None)
+        st.session_state.pop("pivot_preview_error", None)
         with TemporaryDirectory(prefix="deal_expenses_") as temporary_directory:
             directory = Path(temporary_directory)
             request = RunRequest(
@@ -161,6 +202,13 @@ def main() -> None:
                         sap_result = sap_pipeline.metrics
                         status.write(f"Appended {sap_result['appended_rows']:,} SAP row(s).")
                         status.update(label=f"{request.reporting_year} combined refresh complete", state="complete", expanded=False)
+                        try:
+                            st.session_state["pivot_previews"] = extract_pivot_previews(
+                                request.output_path,
+                                ["Concur Analysis - PIVOTS", "SAP Invoices Analysis - PIVOTS"],
+                            )
+                        except RuntimeError as error:
+                            st.session_state["pivot_preview_error"] = str(error)
                         st.session_state["output_bytes"] = request.output_path.read_bytes()
                         st.session_state["output_filename"] = clean_output_filename
                         st.session_state["run_reporting_year"] = request.reporting_year
