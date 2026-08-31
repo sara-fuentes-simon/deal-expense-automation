@@ -1,3 +1,4 @@
+
 """Streamlit interface for the deal expense workbook refresh."""
 
 from __future__ import annotations
