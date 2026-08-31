@@ -89,6 +89,14 @@ class ConcurExcelComWorkbookWriter(ConcurWorkbookWriter):
         return sum(float(value) for value in values if value not in (None, ""))
 
     @staticmethod
+    def _text_value(value: object) -> str:
+        if value in (None, ""):
+            return ""
+        if isinstance(value, float) and value.is_integer():
+            return str(int(value))
+        return str(value).strip()
+
+    @staticmethod
     def _paste_column_from_staging(staging_sheet, worksheet, start_row: int, column_number: int, values: list[object]) -> None:
         if not values:
             return
@@ -177,6 +185,7 @@ class ConcurExcelComWorkbookWriter(ConcurWorkbookWriter):
                 self._unique_header_column(master_headers, target_header, master_sheet)
             master_year_column = self._unique_header_column(master_headers, YEAR_HEADER, master_sheet)
             master_expense_column = self._unique_header_column(master_headers, EXPENSE_HEADER, master_sheet)
+            org_unit_3_code_column = self._unique_header_column(master_headers, "Org Unit 3 - Code", master_sheet)
             column_mappings = self._build_column_mappings(master_headers, bsny_headers, sancap_headers)
 
             bsny_rows = self._source_rows_for_year(bsny_sheet, bsny_headers, request.reporting_year)
@@ -199,6 +208,12 @@ class ConcurExcelComWorkbookWriter(ConcurWorkbookWriter):
             expected_expense_values = None
             for master_column, bsny_column, sancap_column in column_mappings:
                 combined_values = self._values_for_rows(bsny_sheet, bsny_column, bsny_rows) + self._values_for_rows(sancap_sheet, sancap_column, sancap_rows)
+                if master_column == org_unit_3_code_column:
+                    master_sheet.Range(
+                        master_sheet.Cells(first_data_row, master_column),
+                        master_sheet.Cells(final_data_row, master_column),
+                    ).NumberFormat = "@"
+                    combined_values = [self._text_value(value) for value in combined_values]
                 self._paste_column_from_staging(staging_sheet, master_sheet, first_data_row, master_column, combined_values)
                 if master_column == master_expense_column:
                     expected_expense_values = combined_values

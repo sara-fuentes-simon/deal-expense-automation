@@ -255,6 +255,22 @@ def _resize_table(worksheet: Any, old_last_row: int, new_last_row: int) -> None:
             return
 
 
+def _normalize_company_code_column(worksheet: Any, headers: dict[str, int]) -> None:
+    company_column = _required_column(headers, "Company Code", worksheet.Name)
+    document_column = _required_column(headers, DOCUMENT_ID_HEADER, worksheet.Name)
+    last_row = _last_used_row(worksheet, document_column)
+    if last_row < 2:
+        return
+    company_range = worksheet.Range(worksheet.Cells(2, company_column), worksheet.Cells(last_row, company_column))
+    values = company_range.Value2
+    if last_row == 2:
+        values = (values,)
+    else:
+        values = tuple(row[0] for row in values)
+    company_range.NumberFormat = "@"
+    company_range.Value2 = tuple((_normalize_document_id(value) or "",) for value in values)
+
+
 def _append_rows(worksheet: Any, headers: dict[str, int], rows: list[SapSourceRow]) -> None:
     if not rows:
         return
@@ -268,7 +284,9 @@ def _append_rows(worksheet: Any, headers: dict[str, int], rows: list[SapSourceRo
     worksheet.Application.CutCopyMode = False
 
     company_column = _required_column(headers, "Company Code", worksheet.Name)
-    worksheet.Range(worksheet.Cells(first_target_row, company_column), worksheet.Cells(last_target_row, company_column)).Value2 = tuple((ENTITY_TO_COMPANY_CODE[row.entity],) for row in rows)
+    company_range = worksheet.Range(worksheet.Cells(first_target_row, company_column), worksheet.Cells(last_target_row, company_column))
+    company_range.NumberFormat = "@"
+    company_range.Value2 = tuple((ENTITY_TO_COMPANY_CODE[row.entity],) for row in rows)
     for header, column in headers.items():
         if header in {_normalize("Company Code"), _normalize("Year")} or not any(header in row.values for row in rows):
             continue
@@ -335,6 +353,7 @@ def _write_sap_workbook(request: SapRunRequest) -> dict[str, int]:
             raise ValueError(f"No posted {request.reporting_year} SAP data was found in one or both source workbooks.")
         new_rows = _validate_controls([*bsny_rows, *sancap_rows], master_rows, request.reporting_year, scoped_cost_centers)
         _append_rows(master_sheet, headers, new_rows)
+        _normalize_company_code_column(master_sheet, headers)
         excel.Calculation = XL_CALCULATION_AUTOMATIC
         excel.CalculateFull()
         master_book.Save()
