@@ -73,6 +73,8 @@ def render_pivot_previews() -> None:
                 continue
             preview = sheet_previews[0]
             dataframe = pd.DataFrame(preview.rows, columns=preview.headers)
+            for header in dataframe.select_dtypes(include="object"):
+                dataframe[header] = dataframe[header].map(lambda value: "" if value is None else str(value))
             st.dataframe(
                 dataframe.style.apply(
                     lambda row: ["font-weight: bold" if preview.emphasis_rows[row.name] else ""] * len(row),
