@@ -57,7 +57,7 @@ def _table_rows(values: list[list[object]]) -> list[list[object]]:
 
 def _is_emphasis_row(row: list[object]) -> bool:
     label = next((str(value).strip() for value in row if value not in (None, "")), "")
-    return label.casefold() in {"sancap", "bsny", "grand total"}
+    return label.casefold() in {"sancap", "bsny", "6652", "6652.0", "1428", "1428.0", "grand total"}
 
 
 def _preview_pivot(pivot_table) -> PivotPreview | None:
