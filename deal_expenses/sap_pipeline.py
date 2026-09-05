@@ -57,6 +57,13 @@ class SapExpensePipeline:
 
             yield ProgressEvent("SAP Excel refresh", f"Refreshing SAP data for {request.reporting_year} in Microsoft Excel.", 80)
             self.metrics = self._workbook_writer.write(request)
+            validations.append(
+                ValidationResult(
+                    "SAP sanity check",
+                    True,
+                    "Performed: duplicate, document ID, and in-scope cost-center controls passed before SAP rows were appended.",
+                )
+            )
             self.result = RunResult(
                 success=True,
                 output_path=request.master_path,

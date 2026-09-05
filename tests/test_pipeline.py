@@ -4,6 +4,7 @@ import pytest
 
 from deal_expenses.models import RunRequest, SapRunRequest, SourceSummary, ValidationResult
 from deal_expenses.concur_pipeline import ConcurExpensePipeline
+from deal_expenses.concur_sanity import ConcurSanityChecker
 from deal_expenses.sap_pipeline import SapExpensePipeline
 from deal_expenses.sources import BsnyConcurAdapter, SanCapConcurAdapter
 from deal_expenses.concur_validation import ConcurMasterWorkbookValidator
@@ -13,6 +14,13 @@ from deal_expenses.concur_workbook_writer import ConcurWorkbookWriter
 class StubWriter(ConcurWorkbookWriter):
     def write(self, request: RunRequest) -> dict[str, int | float]:
         return {"bsny_rows": 1, "sancap_rows": 1, "total_expense": 30.0}
+
+
+class StubConcurSanityChecker:
+    in_scope_cost_centers = {"6652000161": "NYB - Structured Finance"}
+
+    def validate(self, request: RunRequest, adapters) -> ValidationResult:
+        return ValidationResult("Concur sanity check", True, "Performed: test check passed.")
 
 
 class StubSapAdapter:
@@ -53,6 +61,7 @@ def test_pipeline_completes_preflight_with_sample_workbooks(reporting_year: int)
         [BsnyConcurAdapter(), SanCapConcurAdapter()],
         ConcurMasterWorkbookValidator(),
         StubWriter(),
+        StubConcurSanityChecker(),
     )
 
     events = list(pipeline.run(request))
@@ -61,6 +70,37 @@ def test_pipeline_completes_preflight_with_sample_workbooks(reporting_year: int)
     assert pipeline.result.total_expense == 30.0
     assert events[-1].step == "Complete"
     assert all(str(reporting_year) in event.message for event in events)
+
+
+def test_concur_sanity_checker_stops_when_current_total_is_lower(tmp_path: Path):
+    from openpyxl import Workbook
+
+    master_path = tmp_path / "master.xlsx"
+    source_path = tmp_path / "source.xlsx"
+    output_path = tmp_path / "output.xlsx"
+    master_workbook = Workbook()
+    master_sheet = master_workbook.active
+    master_sheet.title = "Concur Report"
+    master_sheet.append(["Year", "Expense Amount (reimbursement currency)", "Org Unit 5 - Code"])
+    master_sheet.append([2026, 200, "6652000161"])
+    scope_sheet = master_workbook.create_sheet("In Scope CCs")
+    scope_sheet.append(["Cost Centers In-Scope for Deal Expenses"])
+    scope_sheet.append([])
+    scope_sheet.append(["CC Name", "LOB", "SAP LA CC"])
+    scope_sheet.append(["NYB - Structured Finance", "Struc Finance", "6652000161"])
+    master_workbook.save(master_path)
+    source_workbook = Workbook()
+    source_sheet = source_workbook.active
+    source_sheet.title = "Concur"
+    source_sheet.append(["Year", "Expense Amount (reimbursement currency)", "Org Unit 5 - Code"])
+    source_sheet.append([2026, 100, "6652000161"])
+    source_workbook.save(source_path)
+
+    request = RunRequest(master_path, {"bsny": source_path}, output_path, 2026)
+    result = ConcurSanityChecker().validate(request, [BsnyConcurAdapter()])
+
+    assert not result.passed
+    assert "Notify the team before continuing" in result.message
 
 
 def test_sap_pipeline_completes_preflight_with_stubbed_workbooks(tmp_path: Path):

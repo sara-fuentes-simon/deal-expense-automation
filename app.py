@@ -90,6 +90,17 @@ def render_results() -> None:
     if result is None:
         return
 
+    in_scope_cost_centers: dict[str, str] = st.session_state.get("in_scope_cost_centers", {})
+    if in_scope_cost_centers:
+        st.subheader("In-scope cost centers")
+        st.dataframe(
+            pd.DataFrame(
+                [{"Concur / SAP LA CC": code, "Cost center": name} for code, name in in_scope_cost_centers.items()]
+            ),
+            hide_index=True,
+            width="stretch",
+        )
+
     if not result.success:
         st.error(result.error_message or "The workbook refresh did not complete.")
     else:
@@ -164,6 +175,7 @@ def main() -> None:
         st.session_state.pop("run_reporting_year", None)
         st.session_state.pop("sap_result", None)
         st.session_state.pop("sap_validations", None)
+        st.session_state.pop("in_scope_cost_centers", None)
         st.session_state.pop("pivot_previews", None)
         st.session_state.pop("pivot_preview_error", None)
         with TemporaryDirectory(prefix="deal_expenses_") as temporary_directory:
@@ -219,6 +231,7 @@ def main() -> None:
                         st.session_state["sap_validations"] = sap_pipeline.result.validations
                 else:
                     status.update(label="Refresh stopped", state="error", expanded=True)
+            st.session_state["in_scope_cost_centers"] = pipeline.in_scope_cost_centers
             st.session_state["run_result"] = pipeline.result
 
     render_results()

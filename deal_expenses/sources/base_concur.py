@@ -12,6 +12,7 @@ from deal_expenses.models import SourceSummary, ValidationResult
 
 YEAR_HEADER = "Year"
 EXPENSE_HEADER = "Expense Amount (reimbursement currency)"
+CONCUR_COST_CENTER_HEADER = "Org Unit 5 - Code"
 SOURCE_TO_MASTER = {
     "Custom 41 - Name": "Client Name",
     "Custom 42 - Name": "Project Name",
@@ -35,7 +36,7 @@ class SourceAdapter(ABC):
 
     key: str
     display_name: str
-    required_columns = (YEAR_HEADER, EXPENSE_HEADER, *SOURCE_TO_MASTER)
+    required_columns = (YEAR_HEADER, EXPENSE_HEADER, CONCUR_COST_CENTER_HEADER, *SOURCE_TO_MASTER)
 
     @abstractmethod
     def select_worksheet(self, workbook):
