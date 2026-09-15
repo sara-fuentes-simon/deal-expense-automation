@@ -1,6 +1,6 @@
 # Deal Expenses Automation
 
-Local Streamlit application for refreshing the Concur and SAP sections of one deal expense master workbook.
+Local Streamlit application for refreshing the Concur, SAP, and Uber sections of one deal expense master workbook.
 
 ## Requirements
 
@@ -32,12 +32,12 @@ If `win32com` is unavailable after installation, run:
 The browser opens the local frontend, normally at `http://localhost:8501`.
 
 1. Upload the master workbook.
-2. Upload BSNY and SanCap reports for both Concur and SAP.
+2. Upload BSNY and SanCap reports for both Concur and SAP, plus the Uber report.
 3. Enter the reporting year and desired `.xlsx` output filename.
 4. Select **Refresh combined master workbook**.
-5. Review progress, validation details, and the Concur/SAP pivot previews, then download the combined workbook.
+5. Review progress, validation details, Uber Final Cost Center coverage, and the Concur/SAP pivot previews, then download the combined workbook.
 
-The application refreshes Concur first, then appends validated SAP rows to that same temporary workbook. It refreshes the workbook's pivot caches before saving, so the downloaded file opens with current pivot results. The SAP refresh requires the master workbook to contain `SAP Report` or `SAP Invoices Report`, an `In Scope CCs` sheet, and the expected SAP master headers.
+The application refreshes Concur first, appends validated SAP rows, then replaces Uber Report raw data in that same temporary workbook. Uber data maps by header, uses HR `Employee ID` before a Full Name fallback for Cost Center, and reports rather than blocks rows without a Final Cost Center. It refreshes the workbook's pivot caches before saving, so the downloaded file opens with current pivot results. The SAP refresh requires the master workbook to contain `SAP Report` or `SAP Invoices Report`, an `In Scope CCs` sheet, and the expected SAP master headers.
 
 Uploaded files are stored only in a temporary directory while the refresh runs. The completed workbook is retained in the browser session until the page is refreshed or a new refresh starts.
 

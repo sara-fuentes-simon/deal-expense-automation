@@ -6,6 +6,7 @@ from .bsny_sap import BsnySapAdapter
 from .sancap_concur import SanCapConcurAdapter
 from .sancap_sap import SanCapSapAdapter
 from .base_sap import SapSourceAdapter
+from .uber import UberSourceAdapter
 
 __all__ = [
 	"BsnyConcurAdapter",
@@ -14,4 +15,5 @@ __all__ = [
 	"SanCapSapAdapter",
 	"SapSourceAdapter",
 	"SourceAdapter",
+	"UberSourceAdapter",
 ]
