@@ -11,6 +11,7 @@ import pandas as pd
 import streamlit as st
 
 from deal_expenses.models import RunRequest, SapRunRequest, UberRunRequest, sanitize_output_filename
+from deal_expenses.lob_workbooks import LOB_NAMES, build_output_archive, create_lob_workbooks
 from deal_expenses.pivot_preview import PivotPreview, extract_pivot_previews
 from deal_expenses.concur_pipeline import ConcurExpensePipeline
 from deal_expenses.sap_pipeline import SapExpensePipeline
@@ -136,10 +137,10 @@ def render_results() -> None:
             uber_columns[2].metric("Unassigned rate", f"{uber_result['unassigned_final_cost_center_percent']:.2f}%")
         render_pivot_previews()
         st.download_button(
-            "Download combined refreshed workbook",
-            data=st.session_state["output_bytes"],
-            file_name=st.session_state["output_filename"],
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "Download refreshed workbooks",
+            data=st.session_state["output_archive_bytes"],
+            file_name=st.session_state["output_archive_filename"],
+            mime="application/zip",
             type="primary",
         )
 
@@ -183,8 +184,20 @@ def main() -> None:
 
     settings_column, _ = st.columns(2)
     with settings_column:
-        output_filename = st.text_input("Output master filename", value="refreshed_deal_expenses.xlsx")
+        output_filename = st.text_input("Output master filename", value="Expense Report Analysis", key="master_output_filename")
         reporting_year = st.number_input("Reporting year", value=date.today().year, step=1, format="%d")
+
+    st.subheader("LOB output filenames")
+    lob_output_filenames: dict[str, str] = {}
+    lob_columns = st.columns(2)
+    for index, lob_name in enumerate(LOB_NAMES):
+        column = lob_columns[index % len(lob_columns)]
+        with column:
+            lob_output_filenames[lob_name] = st.text_input(
+                f"{lob_name} filename",
+                value=f"Expense Report Analysis - {lob_name}",
+                key=f"{lob_name}_output_filename",
+            )
 
     run_requested = st.button("Refresh combined master workbook", type="primary", width="stretch")
     if run_requested:
@@ -193,12 +206,19 @@ def main() -> None:
             return
         try:
             clean_output_filename = sanitize_output_filename(output_filename)
+            clean_lob_output_filenames = {
+                lob_name: sanitize_output_filename(filename) for lob_name, filename in lob_output_filenames.items()
+            }
+            all_output_filenames = [clean_output_filename, *clean_lob_output_filenames.values()]
+            if len({filename.casefold() for filename in all_output_filenames}) != len(all_output_filenames):
+                raise ValueError("Each output workbook must have a unique filename.")
         except ValueError as error:
             st.error(str(error))
             return
 
         st.session_state.pop("run_result", None)
-        st.session_state.pop("output_bytes", None)
+        st.session_state.pop("output_archive_bytes", None)
+        st.session_state.pop("output_archive_filename", None)
         st.session_state.pop("run_reporting_year", None)
         st.session_state.pop("sap_result", None)
         st.session_state.pop("sap_validations", None)
@@ -263,6 +283,17 @@ def main() -> None:
                             pipeline.result.error_message = f"Uber refresh failed: {uber_pipeline.result.error_message}"
                             status.update(label="Refresh stopped", state="error", expanded=True)
                         else:
+                            progress.progress(96, text="Creating refreshed LOB workbooks.")
+                            status.write("Creating one filtered workbook per LOB and refreshing its pivot tables.")
+                            lob_output_paths = {
+                                lob_name: directory / clean_lob_output_filenames[lob_name] for lob_name in LOB_NAMES
+                            }
+
+                            def show_lob_progress(lob_name: str, index: int, total: int) -> None:
+                                progress.progress(96 + int(index * 3 / total), text=f"Creating {lob_name} workbook ({index}/{total}).")
+                                status.write(f"Creating {lob_name} workbook ({index}/{total}).")
+
+                            create_lob_workbooks(request.output_path, lob_output_paths, on_progress=show_lob_progress)
                             status.update(label=f"{request.reporting_year} combined refresh complete", state="complete", expanded=False)
                             try:
                                 st.session_state["pivot_previews"] = extract_pivot_previews(
@@ -271,8 +302,12 @@ def main() -> None:
                                 )
                             except RuntimeError as error:
                                 st.session_state["pivot_preview_error"] = str(error)
-                            st.session_state["output_bytes"] = request.output_path.read_bytes()
-                            st.session_state["output_filename"] = clean_output_filename
+                            archive_folder_name = Path(clean_output_filename).stem
+                            st.session_state["output_archive_bytes"] = build_output_archive(
+                                [request.output_path, *(lob_output_paths[lob_name] for lob_name in LOB_NAMES)],
+                                archive_folder_name,
+                            )
+                            st.session_state["output_archive_filename"] = f"{archive_folder_name}.zip"
                             st.session_state["run_reporting_year"] = request.reporting_year
                             st.session_state["uber_result"] = uber_pipeline.metrics
                 else:

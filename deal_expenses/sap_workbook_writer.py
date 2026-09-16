@@ -354,8 +354,6 @@ def _write_sap_workbook(request: SapRunRequest) -> dict[str, int]:
         new_rows = _validate_controls([*bsny_rows, *sancap_rows], master_rows, request.reporting_year, scoped_cost_centers)
         _append_rows(master_sheet, headers, new_rows)
         _normalize_company_code_column(master_sheet, headers)
-        master_book.RefreshAll()
-        excel.CalculateUntilAsyncQueriesDone()
         excel.Calculation = XL_CALCULATION_AUTOMATIC
         excel.CalculateFull()
         master_book.Save()

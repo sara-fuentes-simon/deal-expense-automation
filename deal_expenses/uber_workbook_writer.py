@@ -8,6 +8,7 @@ import sys
 from typing import Any
 
 from deal_expenses.hr_refresh import HrRefreshPlan, build_hr_refresh_plan, normalize_network_id
+from deal_expenses.lob_workbooks import refresh_workbook_pivots
 from deal_expenses.models import UberRunRequest
 from deal_expenses.sources.uber import REQUIRED_HEADERS, normalize_uber_header
 from deal_expenses.uber_validation import UBER_HEADER_ROW, UBER_REPORT_SHEET, cost_center_columns, in_scope_column, master_headers, required_column
@@ -211,6 +212,7 @@ class UberExcelComWorkbookWriter:
                 target.Range(target.Cells(first_data_row, column), target.Cells(final_row, column)).FormulaR1C1 = formula
             excel.Calculation = XL_CALCULATION_AUTOMATIC
             excel.CalculateFullRebuild()
+            refresh_workbook_pivots(master_workbook)
             final_cost_centers = _rows(target.Range(target.Cells(first_data_row, final_cost_center_column), target.Cells(final_row, final_cost_center_column)).Value2)
             unassigned = sum(value[0] in (None, "") for value in final_cost_centers)
             master_workbook.Save()
